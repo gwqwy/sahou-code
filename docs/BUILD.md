@@ -73,11 +73,13 @@ npm run gulp vscode-win32-x64
 
 ### 4. 一键脚本
 
-`scripts/build.ps1` 封装了 2~3 步（默认假定源码已就位）：
+`scripts/build.ps1` 封装了 2~3 步，路径按脚本位置自动推导（默认取仓库同级的 `sahou code build\vscode`）：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -SourcePath E:\sahou-code-build\vscode
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```
+
+源码在别处时用 `-SourcePath` 指定。
 
 ## 常见问题
 
@@ -88,3 +90,15 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -SourcePath E:\sahou-
 | 打包末尾 `spawn signtool.exe ENOENT` | Windows SDK 的 signtool 不在 PATH；把 `C:\Program Files (x86)\Windows Kits\10\bin\<版本>\x64` 加入 PATH 重跑 |
 | 下载扩展 403（GitHub API 限流） | product.json 的 `builtInExtensions` 支持 `"vsix": "本地路径"` 字段，手动下载 vsix 后本地引用 |
 | 界面不是中文 | 便携 `data/argv.json` 需含 `"locale": "zh-cn"`（首次启动自动生成）；删除 `data\user-data` 后重启可重建 |
+
+## 发布新版本
+
+日常发布**不需要本地构建**。把改动合并到 `main` 并推送后，打标签即可自动发布：
+
+```powershell
+git tag v1.0.x
+git push origin main v1.0.x
+```
+
+GitHub Actions 会自动构建便携版、创建 Release 并上传 `ShaomaCode-win32-x64-portable.zip`。
+Actions 页手动触发（Run workflow）只构建并上传 artifact，不发布 Release。

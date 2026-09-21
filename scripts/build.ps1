@@ -1,9 +1,17 @@
 # 卅码（Shaoma Code）构建脚本
-# 用法：powershell -ExecutionPolicy Bypass -File build.ps1 [-SourcePath <vscode 源码目录>]
+# 用法：powershell -ExecutionPolicy Bypass -File build.ps1 [-SourcePath <vscode 源码目录>] [-RepoPath <本仓库目录>]
 param(
-    [string]$SourcePath = 'E:\文件\编程文件\编程软件\sahou-code-build\vscode',
-    [string]$RepoPath = 'E:\文件\编程文件\编程软件\sahou-code'
+    [string]$SourcePath = '',
+    [string]$RepoPath = ''
 )
+
+$ErrorActionPreference = 'Stop'
+# 默认路径按脚本位置推导：仓库 = scripts\..，构建工作区 = 仓库同级的 "sahou code build\vscode"
+if (-not $RepoPath) { $RepoPath = Split-Path $PSScriptRoot -Parent }
+if (-not $SourcePath) {
+    $workspace = Split-Path $RepoPath -Parent
+    $SourcePath = Join-Path $workspace 'sahou code build\vscode'
+}
 
 $ErrorActionPreference = 'Stop'
 $git = (Get-Command git -ErrorAction SilentlyContinue).Source

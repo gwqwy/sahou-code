@@ -63,6 +63,11 @@ npm run gulp vscode-win32-x64
 
 `scripts/build.ps1` 一键完成上述全部步骤。
 
+## 发布
+
+日常发布无需本地构建：推送到 `main` 后打 `v*` 标签（`git tag v1.0.x && git push origin v1.0.x`），
+GitHub Actions 自动构建、创建 Release 并上传 `ShaomaCode-win32-x64-portable.zip`。
+
 ## 仓库结构
 
 ```

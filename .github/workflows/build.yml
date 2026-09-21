@@ -5,6 +5,10 @@ on:
   push:
     tags: ['v*']
 
+# 发布 Release 需要写 contents 权限（新仓库默认 token 是只读的）
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -20,7 +24,7 @@ jobs:
           go-version: '1.23'
 
       - name: Install Build Tools dependencies
-        shell: powershell
+        shell: pwsh
         run: |
           # GitHub windows-latest runner 自带 VS 2022 + MSVC + Spectre 库 + Windows SDK
           Write-Host "MSVC and Spectre libraries are preinstalled on the runner"
@@ -128,9 +132,37 @@ jobs:
         shell: pwsh
         run: |
           # gulp outputs the portable build next to vscode-src (repo root)
+          if (-not (Test-Path 'VSCode-win32-x64\卅码.exe')) { throw '卅码.exe missing from build output - build is incomplete' }
           tar.exe -a -c -f ShaomaCode-win32-x64-portable.zip -C VSCode-win32-x64 .
+          $zip = Get-Item ShaomaCode-win32-x64-portable.zip
+          if ($zip.Length -lt 100MB) { throw "portable zip suspiciously small: $([math]::Round($zip.Length/1MB,1)) MB" }
+          'portable zip: {0:N1} MB' -f ($zip.Length/1MB)
 
       - uses: actions/upload-artifact@v4
         with:
           name: ShaomaCode-win32-x64-portable
           path: ShaomaCode-win32-x64-portable.zip
+
+      - name: Publish GitHub release
+        # 发布流程：推送 v* 标签即自动构建并发布 Release（workflow_dispatch 只构建 artifact，不发布）
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $asset = 'ShaomaCode-win32-x64-portable.zip'
+          gh release create $tag --title "卅码 $tag" --generate-notes
+          if ($LASTEXITCODE -ne 0) {
+            # release 已存在（如重跑失败的工作流）时继续，只补传资产
+            Write-Host "## warning: gh release create failed (release may already exist), trying to upload asset anyway"
+          }
+          $ok = $false
+          foreach ($attempt in 1..3) {
+            gh release upload $tag $asset --clobber
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "## warning: asset upload attempt $attempt failed, retrying in 15s"
+            Start-Sleep -Seconds 15
+          }
+          if (-not $ok) { throw "release asset upload failed after 3 attempts" }
+          Write-Host "release $tag published with $asset"
