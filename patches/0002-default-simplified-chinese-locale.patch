@@ -1,0 +1,13 @@
+diff --git a/src/main.ts b/src/main.ts
+index 0db48b04..6082a4ac 100644
+--- a/src/main.ts
++++ b/src/main.ts
+@@ -456,6 +456,8 @@ function createDefaultArgvConfigSync(argvConfigPath: string): void {
+ 			'//',
+ 			'// NOTE: Changing this file requires a restart of VS Code.',
+ 			'{',
++			'	// 界面显示语言：默认简体中文（可改为 "en" 切换回英文）。',
++			'	"locale": "zh-cn",',
+ 			'	// Use software rendering instead of hardware accelerated rendering.',
+ 			'	// This can help in cases where you see rendering issues in VS Code.',
+ 			'	// "disable-hardware-acceleration": true',

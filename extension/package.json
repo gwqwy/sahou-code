@@ -1,0 +1,103 @@
+{
+  "name": "sahou-language",
+  "displayName": "sahou（卅）语言支持",
+  "description": "sahou 编程语言：语法高亮、文件识别、一键运行、实时语法诊断与补全（内置解释器，开箱即用）",
+  "version": "1.0.0",
+  "publisher": "sahou",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "icon": "./icons/saho.png",
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:sahou"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "sahou",
+        "aliases": [
+          "sahou",
+          "卅"
+        ],
+        "extensions": [
+          ".saho"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/saho.png",
+          "dark": "./icons/saho.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sahou",
+        "scopeName": "source.sahou",
+        "path": "./syntaxes/sahou.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "sahou",
+        "path": "./snippets/sahou.json"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "sahou"
+      }
+    ],
+    "commands": [
+      {
+        "command": "sahou.run",
+        "title": "运行当前 sahou 文件",
+        "category": "sahou",
+        "icon": "$(play)"
+      },
+      {
+        "command": "sahou.restartLsp",
+        "title": "重启 sahou 语言服务",
+        "category": "sahou"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "sahou.run",
+        "key": "alt+s",
+        "when": "editorLangId == sahou"
+      }
+    ],
+    "configuration": {
+      "title": "sahou",
+      "properties": {
+        "sahou.path": {
+          "type": "string",
+          "default": "",
+          "description": "sahou 可执行文件的路径。留空则自动使用本产品内置的解释器（推荐）；也可指向其他 sahou.exe。"
+        },
+        "sahou.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用实时语法诊断与补全（由解释器的 lsp 子命令提供）"
+        }
+      }
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "sahou.run",
+          "group": "navigation",
+          "when": "editorLangId == sahou"
+        }
+      ]
+    }
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

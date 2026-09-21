@@ -1,0 +1,16 @@
+diff --git a/build/lib/copilot.ts b/build/lib/copilot.ts
+index 95368853..b578a4dc 100644
+--- a/build/lib/copilot.ts
++++ b/build/lib/copilot.ts
+@@ -258,7 +258,10 @@ export function prepareBuiltInCopilotRipgrepShim(platform: string, arch: string,
+ 	const copilotBase = path.join(extensionNodeModules, '@github', 'copilot');
+ 	const copilotSdkBase = path.join(copilotBase, 'sdk');
+ 	if (!fs.existsSync(copilotSdkBase)) {
+-		throw new Error(`[prepareBuiltInCopilotRipgrepShim] Copilot SDK directory not found at ${copilotSdkBase}`);
++		// Degraded build: if the SDK is not packaged into the artifact, at runtime the Copilot extension
++		// will use the runtime shim fallback; the build should not be blocked by the subscription feature.
++		console.warn(`[prepareBuiltInCopilotRipgrepShim] Copilot SDK directory not found at ${copilotSdkBase}; skipping ripgrep shim materialization.`);
++		return;
+ 	}
+ 	materializeBuiltInCopilotSdkPlatformFiles(copilotPackagePlatformArch, tgrepPlatformArch, copilotBase, appNodeModulesDir, options);
+ 	pruneNonTargetCopilotSdkPrebuilds(copilotPackagePlatformArch, path.join(copilotSdkBase, 'prebuilds'), copilotPlatforms);

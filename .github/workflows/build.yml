@@ -1,0 +1,136 @@
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install Build Tools dependencies
+        shell: powershell
+        run: |
+          # GitHub windows-latest runner 自带 VS 2022 + MSVC + Spectre 库 + Windows SDK
+          Write-Host "MSVC and Spectre libraries are preinstalled on the runner"
+
+      - name: Build sahou interpreter
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/gwqwy/sahou.git sahou
+          cd sahou
+          $env:GOOS='js'; $env:GOARCH='wasm'
+          go build -o sahou.wasm ./cmd/sahouwasm
+          $env:GOOS='windows'; $env:GOARCH='amd64'
+          go build -o sahou.exe .
+
+      - name: Prepare vscode source with patches
+        shell: pwsh
+        env:
+          # upstream commit the patches in patches/ were generated against - keep in sync!
+          VSCODE_UPSTREAM_COMMIT: '4fa9fcf245ad90eb1f21fae5ed0511515e068b1d'
+        run: |
+          git clone --depth 1 https://github.com/microsoft/vscode.git vscode-src
+          Push-Location vscode-src
+          # pin upstream: floating main would break the patches as upstream moves
+          git fetch --depth 1 origin $env:VSCODE_UPSTREAM_COMMIT
+          if ($LASTEXITCODE -ne 0) { throw "fetch of pinned upstream commit failed" }
+          git checkout --detach FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw "checkout of pinned upstream commit failed" }
+          Pop-Location
+          cd vscode-src
+          # pwsh does not glob wildcards for native commands - expand explicitly
+          $patches = (Get-ChildItem ..\patches\*.patch).FullName
+          if (-not $patches) { throw "no patch files found in ..\patches" }
+          # --ignore-whitespace: tolerate any EOL mangling between repo checkout states
+          git apply --ignore-whitespace @patches
+          if ($LASTEXITCODE -ne 0) { throw "git apply failed: $LASTEXITCODE" }
+          # verify patches took effect
+          if (-not (Select-String -Path product.json -Pattern 'shaoma' -Quiet)) { throw 'patch 0001 did not take effect (product.json)' }
+          if (-not (Select-String -Path src\main.ts -Pattern 'zh-cn' -Quiet)) { throw 'patch 0002 did not take effect (src/main.ts)' }
+          if (-not (Select-String -Path 'src\vs\workbench\contrib\welcomeGettingStarted\browser\gettingStarted.contribution.ts' -Pattern 'default: false' -Quiet)) { throw 'patch 0003 did not take effect (onboarding)' }
+          Write-Host 'patches applied and verified'
+          New-Item -ItemType Directory -Force extensions\sahou\bin | Out-Null
+          Copy-Item -Recurse -Force ..\extension\* extensions\sahou\
+          Copy-Item ..\sahou\sahou.exe extensions\sahou\bin\sahou.exe
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/microsoft/vscode-loc.git
+          Push-Location vscode-loc
+          git sparse-checkout set i18n/vscode-language-pack-zh-hans
+          Pop-Location
+          Copy-Item -Recurse vscode-loc\i18n\vscode-language-pack-zh-hans extensions\
+          New-Item -ItemType Directory -Force .build\vsix | Out-Null
+          # marketplace vsix pinned in product.json (builtInExtensions.vsix); release-asset
+          # downloads bypass api.github.com so they are not rate limited
+          curl.exe -sL -o .build\vsix\js-debug-companion.vsix 'https://github.com/microsoft/vscode-js-debug-companion/releases/download/v1.1.3/ms-vscode.js-debug-companion.1.1.3.vsix'
+          curl.exe -sL -o .build\vsix\js-debug.vsix 'https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/ms-vscode.js-debug.1.117.0.vsix'
+          curl.exe -sL -o .build\vsix\js-profile-table.vsix 'https://github.com/microsoft/vscode-js-profile-visualizer/releases/download/v1.0.11/ms-vscode.vscode-js-profile-table.1.0.11.vsix'
+          Get-ChildItem .build\vsix | ForEach-Object { '{0}  {1} KB' -f $_.Name, [math]::Round($_.Length/1KB) }
+
+      - name: Locate Visual Studio for vscode preinstall check
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "No Visual Studio with VC.Tools.x86.x64 found on runner" }
+          Write-Host "Visual Studio found at: $vs"
+          "vs2022_install=$vs" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build portable
+        shell: pwsh
+        working-directory: vscode-src
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:NODE_OPTIONS = '--use-system-ca --max-old-space-size=8192'
+          # signtool (from Windows SDK) is needed by the packaging tail step (rcedit signature probe)
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($signtool) { $env:PATH = "$($signtool.DirectoryName);$env:PATH"; Write-Host "signtool: $($signtool.FullName)" }
+          else { Write-Host '## warning: signtool not found on runner' }
+          Write-Host '==> [1/4] npm ci (root; postinstall wires up sub-packages)'
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "root npm ci failed: $LASTEXITCODE" }
+          Write-Host '==> [2/4] install build toolchain (build/package.json: gulp plugins etc.)'
+          Push-Location build
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "build npm ci failed: $LASTEXITCODE" }
+          if (-not (Test-Path "node_modules\gulp-merge-json")) { throw "gulp-merge-json missing in build/node_modules" }
+          Pop-Location
+          Write-Host '==> [3/4] install extensions toolchain (esbuild-based builtin extensions)'
+          Push-Location extensions
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "extensions npm ci failed: $LASTEXITCODE" }
+          Pop-Location
+          Write-Host '==> [3.5/4] install copilot extension deps (needed by prepareCopilotRipgrepShim)'
+          Push-Location extensions\copilot
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw "copilot npm ci failed: $LASTEXITCODE" }
+          Pop-Location
+          Write-Host '==> [4/4] gulp vscode-win32-x64'
+          npm run gulp vscode-win32-x64 2>&1 | Tee-Object -Variable gulpLog
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::group::gulp error tail'
+            $gulpLog | Select-String -Pattern 'Error|error|errored|failed' | Select-Object -Last 20 | ForEach-Object { $_.Line }
+            Write-Host '::endgroup::'
+            throw "gulp failed: $LASTEXITCODE"
+          }
+
+      - name: Zip portable
+        shell: pwsh
+        run: |
+          # gulp outputs the portable build next to vscode-src (repo root)
+          tar.exe -a -c -f ShaomaCode-win32-x64-portable.zip -C VSCode-win32-x64 .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ShaomaCode-win32-x64-portable
+          path: ShaomaCode-win32-x64-portable.zip

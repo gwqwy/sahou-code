@@ -1,0 +1,10 @@
+# 构建产物
+release-assets/*.zip
+
+# 本地测试
+test-ws/
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store
